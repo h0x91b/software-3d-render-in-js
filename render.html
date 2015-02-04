@@ -6464,7 +6464,7 @@ f 1201/1249/1201 1202/1248/1202 1200/1246/1200
 		}
 	}
 	
-	function triangle(t0, t1, t2, image, color) {
+	function triangle(t0, t1, t2, image, color, zbuffer) {
 		var args = arguments;
 		function swap(name1, name2) {
 			var i = 0;
@@ -6480,90 +6480,51 @@ f 1201/1249/1201 1202/1248/1202 1200/1246/1200
 		if (t0.y>t2.y) swap('t0', 't2');
 		if (t1.y>t2.y) swap('t1', 't2');
 		
-		var total_height = t2.y-t0.y;
+		function vec(t) {
+			return new THREE.Vector3(t.x, t.y, t.z);
+		}
+		
+		var total_height = ~~(t2.y-t0.y);
 		for(var i=0;i<total_height;i++) {
 			var second_half = i>t1.y-t0.y || t1.y==t0.y;
-			var segment_height = second_half ? t2.y-t1.y : t1.y-t0.y;
+			var segment_height = ~~(second_half ? t2.y-t1.y : t1.y-t0.y);
 			var alpha = i/total_height;
 			var beta  = (i-(second_half ? t1.y-t0.y : 0))/segment_height; // be careful: with above conditions no division by zero here
-			var A = t0.x + (t2.x-t0.x)*alpha;
-			var B = second_half ? t1.x + (t2.x-t1.x)*beta : t0.x + (t1.x-t0.x)*beta;
-			if (A>B){
+			var A = vec(t0).add(vec(t2).sub(vec(t0)).multiplyScalar(alpha));
+			// Vec3i A =               t0 + Vec3f(t2-t0)*alpha;
+			var B = second_half ? 
+						vec(t1).add(vec(t2).sub(vec(t1)).multiplyScalar(beta)) :
+						vec(t0).add(vec(t1).sub(vec(t0)).multiplyScalar(beta));
+			// Vec3i B = second_half ? t1 + Vec3f(t2-t1)*beta : t0 + Vec3f(t1-t0)*beta;
+			if(A.x > B.x) {
 				var t = A;
 				A = B;
 				B = t;
 			}
-			for (var j=A; j<=B; j++) {
-				image.set(j, t0.y+i, color); // attention, due to int casts t0.y+i != A.y
+			
+			for (var j=~~(A.x); j<=~~(B.x); j++) {
+				// float phi = B.x==A.x ? 1. : (float)(j-A.x)/(float)(B.x-A.x);
+				var phi = B.x == A.x ? 1. : (j-A.x)/(B.x-A.x);
+				//Vec3i P = Vec3f(A) + Vec3f(B-A)*phi;
+				var P = vec(A).add(vec(B).sub(vec(A)).multiplyScalar(phi));
+				var idx = ~~(P.x+P.y*width);
+				if (zbuffer[idx]<P.z) {
+					zbuffer[idx] = P.z;
+					image.set(P.x, P.y, color);
+				}
 			}
 		}
-		// dd(0);
-// 		function dd(i) {
-// 			var second_half = i>t1.y-t0.y || t1.y==t0.y;
-// 			var segment_height = second_half ? t2.y-t1.y : t1.y-t0.y;
-// 			var alpha = i/total_height;
-// 			var beta  = (i-(second_half ? t1.y-t0.y : 0))/segment_height; // be careful: with above conditions no division by zero here
-// 			var A = t0.x + (t2.x-t0.x)*alpha;
-// 			var B = second_half ? t1.x + (t2.x-t1.x)*beta : t0.x + (t1.x-t0.x)*beta;
-// 			if (A>B){
-// 				var t = A;
-// 				A = B;
-// 				B = t;
-// 			}
-// 			for (var j=A; j<=B; j++) {
-// 				image.set(j, t0.y+i, color); // attention, due to int casts t0.y+i != A.y
-// 			}
-// 			if(i<total_height)
-// 				setTimeout(dd, 25, ++i);
-// 		}
-
-		// var total_height = t2.y-t0.y;
-		// for (var y=t0.y; y<=t1.y; y++) {
-		// 	var segment_height = t1.y-t0.y+1;
-		// 	var alpha = (y-t0.y)/total_height;
-		// 	var beta  = (y-t0.y)/segment_height; // be careful with divisions by zero
-		// 	var A = t0.x + (t2.x-t0.x)*alpha;
-		// 	var B = t0.x + (t1.x-t0.x)*beta;
-		// 	if (A>B){
-		// 		var t = A;
-		// 		A = B;
-		// 		B = t;
-		// 	}
-		// 	for (var j=A; j<=B; j++) {
-		// 		image.set(j, y, color); // attention, due to int casts t0.y+i != A.y
-		// 	}
-		// }
-		// for (var y=t1.y; y<=t2.y; y++) {
-		// 	var segment_height =  t2.y-t1.y+1;
-		// 	var alpha = (y-t0.y)/total_height;
-		// 	var beta  = (y-t1.y)/segment_height; // be careful with divisions by zero
-		// 	var A = t0.x + (t2.x-t0.x)*alpha;
-		// 	var B = t1.x + (t2.x-t1.x)*beta;
-		// 	if (A>B) {
-		// 		var t = A;
-		// 		A = B;
-		// 		B = t;
-		// 	}
-		// 	for (var j=A; j<=B; j++) {
-		// 		image.set(j, y, color); // attention, due to int casts t0.y+i != A.y
-		// 	}
-		// }
 	}
 	
 	var model = new Model(document.querySelector('[name="model"]').value);
 	
-	console.log('hello');
-	var width = 800, height = 800;
+	var width = 800, height = 800, depth = 255;
 	
 	var image = new TGAEmulator(width, height, document.querySelector('#wrapper'));
 	image.flip_vertically();
 	var red = [255,0,0,255];
 	var white = [255,255,255,255];
 	var green = [0,255,0,255];
-	
-	// line(13, 20, 80, 40, image, white);
-	// line(20, 13, 40, 80, image, red);
-	// line(80, 40, 13, 20, image, red);
 
 	function Vec2i(x, y) {
 		return {x:x,y:y};
@@ -6572,10 +6533,11 @@ f 1201/1249/1201 1202/1248/1202 1200/1246/1200
 	var t0 = [Vec2i(10, 70),   Vec2i(50, 160),  Vec2i(70, 80)];
 	var t1 = [Vec2i(180, 50),  Vec2i(150, 1),   Vec2i(70, 180)];
 	var t2 = [Vec2i(90, 200), Vec2i(5, 215), Vec2i(80, 250)];
-
-	// triangle(t0[0], t0[1], t0[2], image, red);
-	// triangle(t1[0], t1[1], t1[2], image, white);
-	// triangle(t2[0], t2[1], t2[2], image, green);
+	
+	var zbuffer = Array(width*height);
+	for (var i=0; i<width*height; i++) {
+		zbuffer[i] = Number.MIN_VALUE;
+	}
 	
 	function drawFace(i) {
 		var face = model.faces[i];
@@ -6590,7 +6552,8 @@ f 1201/1249/1201 1202/1248/1202 1200/1246/1200
 			var v = model.verts[face[j]];
 			screen_coords[j] = {
 				x: (v.x+1)*width/2,
-				y: (v.y+1.)*height/2
+				y: (v.y+1.)*height/2,
+				z: (v.z+1.)*depth/2
 			};
 			world_coords[j]  = v;
 			worldCoords[j] = new THREE.Vector3(v.x, v.y, v.z);
@@ -6599,52 +6562,18 @@ f 1201/1249/1201 1202/1248/1202 1200/1246/1200
 			return [~~(Math.random()*255),~~(Math.random()*255),~~(Math.random()*255), 255];
 		}
 		
-		//wireframe
-		// line(screen_coords[0].x, screen_coords[0].y, screen_coords[1].x, screen_coords[1].y, image, red);
-		// line(screen_coords[0].x, screen_coords[0].y, screen_coords[2].x, screen_coords[2].y, image, red);
-		// line(screen_coords[1].x, screen_coords[1].y, screen_coords[2].x, screen_coords[2].y, image, red);
-		// setTimeout(drawFace, 1, ++i);
-		
-		//random color
-		// triangle(screen_coords[0], screen_coords[1], screen_coords[2], image, randColor());
-		// setTimeout(drawFace, 1, ++i);
-		
-		//light
 		var light_dir = new THREE.Vector3(0, 0, -1);
-		var mul = new THREE.Vector3(1000000, 1000000, 1000000);
-		var a = (worldCoords[2].sub(worldCoords[0]));//.multiply(mul));
-		var b = (worldCoords[1].sub(worldCoords[0]));//.multiply(mul));
+		var a = (worldCoords[2].sub(worldCoords[0]));
+		var b = (worldCoords[1].sub(worldCoords[0]));
 		
 		var n = a.cross(b);
 		n.normalize();
 		
 		var intensity = n.dot(light_dir);
 		if(intensity > 0) {
-			console.log(intensity)
-			triangle(screen_coords[0], screen_coords[1], screen_coords[2], image, [~~(255*intensity),~~(255*intensity),~~(255*intensity), 255]);
-		} else {
-			//triangle(screen_coords[0], screen_coords[1], screen_coords[2], image, red);
+			triangle(screen_coords[0], screen_coords[1], screen_coords[2], image, [~~(255*intensity),~~(255*intensity),~~(255*intensity), 255], zbuffer);
 		}
 		setTimeout(drawFace, 1, ++i);
-		
-	    // Vec3f light_dir(0,0,-1);
-	    //    for (int i=0; i<model->nfaces(); i++) {
-	    //        std::vector<int> face = model->face(i);
-	    //        Vec2i screen_coords[3];
-	    //        Vec3f world_coords[3];
-	    //        for (int j=0; j<3; j++) {
-	    //            Vec3f v = model->vert(face[j]);
-	    //            screen_coords[j] = Vec2i((v.x+1.)*width/2., (v.y+1.)*height/2.);
-	    //            world_coords[j]  = v;
-	    //        }
-	    //        Vec3f n = (world_coords[2]-world_coords[0])^(world_coords[1]-world_coords[0]);
-	    //        n.normalize();
-	    //        float intensity = n*light_dir;
-	    //        if (intensity>0) {
-	    //            triangle(screen_coords[0], screen_coords[1], screen_coords[2], image, TGAColor(intensity*255, intensity*255, intensity*255, 255));
-	    //        }
-	    //    }
-
 	}
 	drawFace(0);
 	</script>
