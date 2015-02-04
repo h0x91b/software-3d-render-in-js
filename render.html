@@ -6385,6 +6385,12 @@ f 1201/1249/1201 1202/1248/1202 1200/1246/1200
 		var id = this.ctx.createImageData(1,1);
 		var d  = id.data;
 		function setPixel(x,y,r,g,b,a) {
+			x = ~~x;
+			y = ~~y;
+			r = ~~r;
+			g = ~~g;
+			b = ~~b;
+			a = ~~a;
 			d[0] = r;
 			d[1] = g;
 			d[2] = b;
@@ -6507,9 +6513,9 @@ f 1201/1249/1201 1202/1248/1202 1200/1246/1200
 				var phi = B.x == A.x ? 1. : (j-A.x)/(B.x-A.x);
 				//Vec3i P = Vec3f(A) + Vec3f(B-A)*phi;
 				var P = vec(A).add(vec(B).sub(vec(A)).multiplyScalar(phi));
-				var idx = ~~(P.x+P.y*width);
-				if (zbuffer[idx]<P.z) {
-					zbuffer[idx] = P.z;
+				var idx = ~~( ~~(P.x) + ~~(P.y)*width );
+				if (zbuffer[idx] < P.z) {
+					zbuffer[idx] = ~~(P.z);
 					image.set(P.x, P.y, color);
 				}
 			}
