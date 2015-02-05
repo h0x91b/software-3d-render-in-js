@@ -6413,8 +6413,9 @@ f 1201/1249/1201 1202/1248/1202 1200/1246/1200
 		}
 	};
 	
-	function Model(txt) {
+	function Model(txt, texture) {
 		var self = this;
+		this.texture = texture;
 		this.faces = [];
 		this.verts = [];
 		this.norms = [];
@@ -6467,6 +6468,22 @@ f 1201/1249/1201 1202/1248/1202 1200/1246/1200
 				break;
 			}
 		});
+		
+		this.uv = function(iface, nvert) {
+			var idx = this.faces[iface][nvert].vt;
+			return new THREE.Vector3(
+				~~(this.uvs[idx].u*this.texture.imageWidth),
+				~~(this.uvs[idx].w*this.texture.imageHeight)
+			);
+		}
+		
+		this.diffuse = function(vec) {
+			if (vec.x<0 || vec.y<0 || vec.x>=this.texture.width || vec.y>=this.texture.height) {
+				return [0,0,0,255];
+			}
+			var idx = (vec.x + (vec.y*this.texture.width));
+			return this.texture.image[idx];
+		}
 	}
 	
 	function loadTexture(id, cb) {
@@ -6589,7 +6606,7 @@ f 1201/1249/1201 1202/1248/1202 1200/1246/1200
 				var idx = ~~( ~~(P.x) + ~~(P.y)*width );
 				if (zbuffer[idx] < P.z) {
 					zbuffer[idx] = ~~(P.z);
-					var color = diffuse(uvP.x, uvP.y);
+					var color = model.diffuse(uvP);
 					image.set(P.x, P.y, [color.r*intensity, color.g*intensity, color.b*intensity, color.a]);
 				}
 			}
@@ -6597,8 +6614,8 @@ f 1201/1249/1201 1202/1248/1202 1200/1246/1200
 	}
 	
 	function diffuse(x, y) {
-		x = ~~(x * texture.width);
-		y = ~~(y * texture.height);
+		// x = ~~(x * texture.width);
+		// y = ~~(y * texture.height);
 		if(x<0 || y<0 || x>=texture.width || y>=texture.height) {
 			debugger;
 			return [0,0,0,255];
@@ -6641,10 +6658,7 @@ f 1201/1249/1201 1202/1248/1202 1200/1246/1200
 		if(intensity > 0) {
 			var uv = Array(3);
 			for(var k=0;k<3;k++)
-				uv[k] = {
-					x: model.uvs[face[k].vt].u, 
-					y: model.uvs[face[k].vt].w
-				};
+				uv[k] = model.uv(i, k);
 			triangle(screen_coords[0], screen_coords[1], screen_coords[2], uv[0], uv[1], uv[2], image, intensity, zbuffer);
 		}
 		setTimeout(drawFace, 1, ++i);
@@ -6664,7 +6678,7 @@ f 1201/1249/1201 1202/1248/1202 1200/1246/1200
 		console.log('data', textureData.length);
 		texture = textureData;
 		
-		model = new Model(document.querySelector('[name="model"]').value);
+		model = new Model(document.querySelector('[name="model"]').value, texture);
 
 	
 		image = new TGAEmulator(width, height, document.querySelector('#wrapper'));
