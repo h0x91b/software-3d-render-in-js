@@ -6384,18 +6384,11 @@ f 1201/1249/1201 1202/1248/1202 1200/1246/1200
 		this.clear();
 
 		var id = this.ctx.createImageData(1,1);
-		var d  = id.data;
 		function setPixel(x,y,r,g,b,a) {
-			x = ~~x;
-			y = ~~y;
-			r = ~~r;
-			g = ~~g;
-			b = ~~b;
-			a = ~~a;
-			d[0] = r;
-			d[1] = g;
-			d[2] = b;
-			d[3] = a;
+			id.data[0] = r;
+			id.data[1] = g;
+			id.data[2] = b;
+			id.data[3] = a;
 			y = this.flipVertically ? this.height - y : y;
 			this.ctx.putImageData( id, x, y );
 		}
@@ -6406,7 +6399,7 @@ f 1201/1249/1201 1202/1248/1202 1200/1246/1200
 			this.ctx.fillRect(0, 0, this.width, this.height);
 		},
 		set: function(x,y,color) {
-			this.setPixel(x,y,color[0],color[1],color[2],color[3]);
+			this.setPixel(~~x,~~y,~~color[0],~~color[1],~~color[2],~~color[3]);
 		},
 		flip_vertically: function() {
 			this.flipVertically = !this.flipVertically;
@@ -6472,16 +6465,17 @@ f 1201/1249/1201 1202/1248/1202 1200/1246/1200
 		this.uv = function(iface, nvert) {
 			var idx = this.faces[iface][nvert].vt;
 			return new THREE.Vector3(
-				~~(this.uvs[idx].u*this.texture.imageWidth),
-				~~(this.uvs[idx].w*this.texture.imageHeight)
-			);
+				~~(this.uvs[idx].u*this.texture.width),
+				~~(this.uvs[idx].v*this.texture.height),
+				0
+			).toInt();
 		}
 		
 		this.diffuse = function(vec) {
 			if (vec.x<0 || vec.y<0 || vec.x>=this.texture.width || vec.y>=this.texture.height) {
-				return [0,0,0,255];
+				return [0,0,0,0];
 			}
-			var idx = (vec.x + (vec.y*this.texture.width));
+			var idx = ~~(vec.x + (vec.y*this.texture.width));
 			return this.texture.image[idx];
 		}
 	}
@@ -6547,6 +6541,13 @@ f 1201/1249/1201 1202/1248/1202 1200/1246/1200
 		}
 	}
 	
+	THREE.Vector3.prototype.toInt = function() {
+		this.x = ~~this.x;
+		this.y = ~~this.y;
+		this.z = ~~this.z;
+		return this;
+	}
+	
 	function triangle(t0, t1, t2, uv0, uv1, uv2, image, intensity, zbuffer) {
 		var args = arguments;
 		function swap(name1, name2) {
@@ -6580,48 +6581,41 @@ f 1201/1249/1201 1202/1248/1202 1200/1246/1200
 						vec(t0).add(vec(t1).sub(vec(t0)).multiplyScalar(beta));
 			// Vec3i B = second_half ? t1 + Vec3f(t2-t1)*beta : t0 + Vec3f(t1-t0)*beta;
 			
-			var uvA = vec(uv0).add(vec(uv2).sub(vec(uv0)).multiplyScalar(alpha));
+			var uvA = vec(uv0).add(vec(uv2).sub(vec(uv0)).multiplyScalar(alpha)).toInt();
 			//Vec2i uvA =               uv0 +      (uv2-uv0)*alpha;
 			
 			var uvB = second_half ? 
-						vec(uv1).add(vec(uv2).sub(vec(uv1)).multiplyScalar(beta)): 
-						vec(uv0).add(vec(uv1).sub(vec(uv0)).multiplyScalar(beta));
+						vec(uv1).add(vec(uv2).sub(vec(uv1)).multiplyScalar(beta)).toInt(): 
+						vec(uv0).add(vec(uv1).sub(vec(uv0)).multiplyScalar(beta)).toInt();
 			//Vec2i uvB = second_half ? uv1 +      (uv2-uv1)*beta : uv0 +      (uv1-uv0)*beta;
 			if(A.x > B.x) {
 				var t = A;
 				A = B;
 				B = t;
+				
+				t = uvA;
+				uvA = uvB;
+				uvB = t;
 			}
 			
 			for (var j=~~(A.x); j<=~~(B.x); j++) {
 				// float phi = B.x==A.x ? 1. : (float)(j-A.x)/(float)(B.x-A.x);
 				var phi = B.x == A.x ? 1. : (j-A.x)/(B.x-A.x);
 				//Vec3i P = Vec3f(A) + Vec3f(B-A)*phi;
-				var P = vec(A).add(vec(B).sub(vec(A)).multiplyScalar(phi));
+				var P = vec(A).add(vec(B).sub(vec(A)).multiplyScalar(phi)).toInt();
+				
+				// Vec2i uvP =     uvA +   (uvB-uvA)*phi;
+				var uvP = uvA.add(uvB.sub(uvA).multiplyScalar(phi)).toInt();
 				P.x = j;
 				P.y = i+t0.y;
-				
-				var uvP = uvA.add(uvB.sub(uvA).multiplyScalar(phi));
-				// Vec2i uvP =     uvA +   (uvB-uvA)*phi;
 				var idx = ~~( ~~(P.x) + ~~(P.y)*width );
 				if (zbuffer[idx] < P.z) {
 					zbuffer[idx] = ~~(P.z);
 					var color = model.diffuse(uvP);
-					image.set(P.x, P.y, [color.r*intensity, color.g*intensity, color.b*intensity, color.a]);
+					image.set(P.x, P.y, [color.r*intensity, color.g*intensity, color.b*intensity, 255]);
 				}
 			}
 		}
-	}
-	
-	function diffuse(x, y) {
-		// x = ~~(x * texture.width);
-		// y = ~~(y * texture.height);
-		if(x<0 || y<0 || x>=texture.width || y>=texture.height) {
-			debugger;
-			return [0,0,0,255];
-		}
-		var idx = ~~(y*texture.width + x);
-		return texture.image[idx];
 	}
 	
 	function drawFace(i) {
