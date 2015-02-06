@@ -114,6 +114,11 @@ function Model(txt, texture) {
 		var idx = ~~(vec.x + (vec.y*this.texture.width));
 		return this.texture.image[idx];
 	}
+	
+	this.norm = function(iface, nvert) {
+		var idx = this.faces[iface][nvert].vn;
+		return (new THREE.Vector3(this.norms[idx].x, this.norms[idx].y, this.norms[idx].z)).normalize();
+	}
 }
 
 function loadTexture(base64, cb) {
