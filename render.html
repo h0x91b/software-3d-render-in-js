@@ -117,7 +117,7 @@
 			var idx = this.faces[iface][nvert].vt;
 			return new THREE.Vector3(
 				~~(this.uvs[idx].u*this.texture.width),
-				~~(this.uvs[idx].v*this.texture.height),
+				this.texture.height-~~(this.uvs[idx].v*this.texture.height),
 				0
 			).toInt();
 		}
@@ -206,7 +206,7 @@
 		var args = arguments;
 		function swap(name1, name2) {
 			var i = 0;
-			var argNames = {t0:i++, t1:i++, t2:i++, image:i++, color:i++};
+			var argNames = {t0:i++, t1:i++, t2:i++, uv0:i++, uv1:i++, uv2:i++, image:i++, color:i++};
 			i = args[argNames[name1]];
 			args[argNames[name1]] = args[argNames[name2]];
 			args[argNames[name2]] = i;
@@ -214,9 +214,18 @@
 		
 		if (t0.y==t1.y && t0.y==t2.y) return; // i dont care about degenerate triangles
 		// sort the vertices, t0, t1, t2 lower-to-upper (bubblesort yay!)
-		if (t0.y>t1.y) swap('t0', 't1');
-		if (t0.y>t2.y) swap('t0', 't2');
-		if (t1.y>t2.y) swap('t1', 't2');
+		if (t0.y>t1.y) {
+			swap('t0', 't1');
+			swap('uv0', 'uv1');
+		}
+		if (t0.y>t2.y) {
+			swap('t0', 't2');
+			swap('uv0', 'uv2');
+		}
+		if (t1.y>t2.y) {
+			swap('t1', 't2');
+			swap('uv1', 'uv2');
+		}
 		
 		function vec(t) {
 			return new THREE.Vector3(t.x, t.y, t.z);
