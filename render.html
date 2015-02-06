@@ -5,7 +5,7 @@
 	var THREE = {};
 	</script>
 	<script src="Vector3.js"></script>
-	<script src="Matrix3.js"></script>
+	<script src="Matrix.js"></script>
 	<script src="Math.js"></script>
 	<script src="head-model.js"></script>
 	<script src="texture-test.js"></script>
@@ -16,92 +16,149 @@
 	<div id="wrapper">
 	</div>
 	<script>
-	render(document.querySelector('#wrapper'), headModelTxt, textureHeadDiffuse, 500, 500, false);
-	render(document.querySelector('#wrapper'), headModelTxt, textureRestangleWithFourColors, 500, 500, false);
+	drawModelWithTestTexture();
 	
-	function render(wrapper, modelTxt, textureBase64, width, height, drawSlow) {
-		var model, image, zbuffer;
+	function drawModelWithTestTexture() {
+		console.log('loading texture test');
+		loadTexture(textureRestangleWithFourColors, function(texture){
+			console.log('texture test is loaded');
+			console.log('loading model');
+			var headModel = new Model(headModelTxt, texture);
+			console.log('model loaded, begin render');
+			render(document.querySelector('#wrapper'), headModel, texture, 500, 500, false, drawModelWithNormalTexture);
+		});
+	}
+	
+	function drawModelWithNormalTexture() {
+		console.log('loading texture head');
+		loadTexture(textureHeadDiffuse, function(texture){
+			console.log('texture head is loaded');
+			console.log('loading model');
+			var headModel = new Model(headModelTxt, texture);
+			console.log('model loaded, begin render');
+			render(document.querySelector('#wrapper'), headModel, texture, 500, 500, false);
+		});
+	}
+	
+	function render(wrapper, model, texture, width, height, drawSlow, done) {
+		done = done || function(){};
+		
+		var image, zbuffer;
 		var depth = 255;
-		var texture;
 		drawSlow = !!drawSlow;
+		var light_dir = new THREE.Vector3(0, 0, -1);
+		light_dir.normalize();
+		var eye = new THREE.Vector3(1, 1, 3);
+		var center = new THREE.Vector3(0, 0, 0);
+		var camera = new THREE.Vector3(0, 0, 3);
+		var Projection = Matrix.identity(4);
+		var ViewPort   = viewport(width/8, height/8, width*3/4, height*3/4);
+		Projection.row(3)[2] = -1./camera.z;
 		
-		loadTexture(textureBase64, function(textureData){
-			texture = textureData;
-		
-			model = new Model(modelTxt, texture);
+		texture.imageObj.style.width = '128px';
+		texture.imageObj.style.height = '128px';
+		texture.imageObj.style.display = 'block';
+		texture.imageObj.style.float = 'left';
+		wrapper.appendChild(texture.imageObj);
 	
-			textureData.imageObj.style.width = '128px';
-			textureData.imageObj.style.height = '128px';
-			textureData.imageObj.style.display = 'block';
-			textureData.imageObj.style.float = 'left';
-			wrapper.appendChild(textureData.imageObj);
-		
-			image = new TGAEmulator(width, height, wrapper);
-			image.flip_vertically();
+		image = new TGAEmulator(width, height, wrapper);
+		image.flip_vertically();
 
-			function Vec2i(x, y) {
-				return {x:x,y:y};
+		zbuffer = Array(width*height);
+		for (var i=0; i<width*height; i++) {
+			zbuffer[i] = Number.MIN_VALUE;
+		}
+		
+		if(!drawSlow) {
+			var i = 0;
+			//once at half second free a main loop for redraw screen
+			var lastTime = +new Date();
+			drawBulk();
+			function drawBulk() {
+				var t=0;
+				for(i;i<model.faces.length;i++) {
+					drawFace(i);
+					if(+new Date() - lastTime >= 500) break;
+				}
+				lastTime = +new Date();
+				if(i<model.faces.length)
+					setTimeout(drawBulk);
+				else {
+					console.log('render completed');
+					done();
+				}
+				
 			}
+		} else {
+			drawFace(0);
+		}
+		
+		function m2v(m) {
+			return new THREE.Vector3(m.row(0)[0]/m.row(3)[0], m.row(1)[0]/m.row(3)[0], m.row(2)[0]/m.row(3)[0]);
+		}
+		
+		function v2m(v) {
+			var m = new Matrix(4, 1);
+			m.row(0)[0] = v.x;
+			m.row(1)[0] = v.y;
+			m.row(2)[0] = v.z;
+			m.row(3)[0] = 1.;
+			return m;
+		}
+		
+		function viewport(x, y, w, h) {
+			var m = Matrix.identity(4);
+			m.row(0)[3] = x+w/2.;
+			m.row(1)[3] = y+h/2.;
+			m.row(2)[3] = depth/2.;
 
-			var t0 = [Vec2i(10, 70),   Vec2i(50, 160),  Vec2i(70, 80)];
-			var t1 = [Vec2i(180, 50),  Vec2i(150, 1),   Vec2i(70, 180)];
-			var t2 = [Vec2i(90, 200), Vec2i(5, 215), Vec2i(80, 250)];
-	
-			zbuffer = Array(width*height);
-			for (var i=0; i<width*height; i++) {
-				zbuffer[i] = Number.MIN_VALUE;
+			m.row(0)[0] = w/2.;
+			m.row(1)[1] = h/2.;
+			m.row(2)[2] = depth/2.;
+			return m;
+		}
+		
+		function drawFace(i) {
+			var face = model.faces[i];
+			if(typeof face === 'undefined') {
+				console.log('render complete');
+				done();
+				return;
+			}
+			var screen_coords = Array(3);
+			var world_coords = Array(3);
+			var worldCoords = Array(3);
+			for(var j=0;j<3;j++) {
+				var v = model.verts[face[j].v];
+				//screen_coords[j] =  m2v(ViewPort*Projection*v2m(v));
+				screen_coords[j] =  m2v(ViewPort.mul(Projection).mul(v2m(v))).toInt();
+				// screen_coords[j] = {
+				// 	x: ~~((v.x+1)*width/2),
+				// 	y: ~~((v.y+1.)*height/2),
+				// 	z: ~~((v.z+1.)*depth/2)
+				// };
+				world_coords[j]  = v;
+				worldCoords[j] = new THREE.Vector3(v.x, v.y, v.z);
+			}
+			function randColor() {
+				return [~~(Math.random()*255),~~(Math.random()*255),~~(Math.random()*255), 255];
 			}
 			
-			if(!drawSlow) {
-				var i = 0;
-				//once at second free a main loop for redraw screen
-				var lastTime = +new Date();
-				drawBulk();
-				function drawBulk() {
-					var t=0;
-					for(i;i<model.faces.length;i++) {
-						drawFace(i);
-						if(+new Date() - lastTime >= 1000) break;
-					}
-					lastTime = +new Date();
-					if(i<model.faces.length)
-						setTimeout(drawBulk);
-					else
-						console.log('render completed');
-				}
-			} else {
-				drawFace(0);
-			}
-		});
+			var a = (worldCoords[2].sub(worldCoords[0]));
+			var b = (worldCoords[1].sub(worldCoords[0]));
 		
-		function line(x0, y0, x1, y1, image, color) {
-			var args = arguments;
-			function swap(name1, name2) {
-				var i = 0;
-				var argNames = {x0:i++, y0:i++, x1:i++, y1:i++, image:i++, color:i++};
-				i = args[argNames[name1]];
-				args[argNames[name1]] = args[argNames[name2]];
-				args[argNames[name2]] = i;
+			var n = a.cross(b);
+			n.normalize();
+		
+			var intensity = n.dot(light_dir);
+			if(intensity > 0) {
+				var uv = Array(3);
+				for(var k=0;k<3;k++)
+					uv[k] = model.uv(i, k);
+				triangle(screen_coords[0], screen_coords[1], screen_coords[2], uv[0], uv[1], uv[2], image, intensity, zbuffer);
 			}
-			var steep = false;
-			if (Math.abs(x0-x1)<Math.abs(y0-y1)) { // if the line is steep, we transpose the image
-				swap('x0', 'y0');
-				swap('x1', 'y1');
-				steep = true;
-			}
-			if (x0>x1) { // make it left-to-right
-				swap('x0', 'x1');
-				swap('y0', 'y1');
-			}
-			for (var x=x0; x<=x1; x++) {
-				var t = (x-x0)/(x1-x0);
-				var y = ~~(y0*(1.-t) + y1*t); //Math.floor on 0 returns NaN
-				if (steep) {
-					image.set(y, x, color); // if transposed, de-transpose
-				} else {
-					image.set(x, y, color);
-				}
-			}
+			if(drawSlow)
+				setTimeout(drawFace, 1, ++i);
 		}
 	
 		function triangle(t0, t1, t2, uv0, uv1, uv2, image, intensity, zbuffer) {
@@ -184,47 +241,6 @@
 					}
 				}
 			}
-		}
-	
-		function drawFace(i) {
-			var face = model.faces[i];
-			if(typeof face === 'undefined') {
-				console.log('render complete');
-				return;
-			}
-			var screen_coords = Array(3);
-			var world_coords = Array(3);
-			var worldCoords = Array(3);
-			for(var j=0;j<3;j++) {
-				var v = model.verts[face[j].v];
-				screen_coords[j] = {
-					x: ~~((v.x+1)*width/2),
-					y: ~~((v.y+1.)*height/2),
-					z: ~~((v.z+1.)*depth/2)
-				};
-				world_coords[j]  = v;
-				worldCoords[j] = new THREE.Vector3(v.x, v.y, v.z);
-			}
-			function randColor() {
-				return [~~(Math.random()*255),~~(Math.random()*255),~~(Math.random()*255), 255];
-			}
-		
-			var light_dir = new THREE.Vector3(0, 0, -1);
-			var a = (worldCoords[2].sub(worldCoords[0]));
-			var b = (worldCoords[1].sub(worldCoords[0]));
-		
-			var n = a.cross(b);
-			n.normalize();
-		
-			var intensity = n.dot(light_dir);
-			if(intensity > 0) {
-				var uv = Array(3);
-				for(var k=0;k<3;k++)
-					uv[k] = model.uv(i, k);
-				triangle(screen_coords[0], screen_coords[1], screen_coords[2], uv[0], uv[1], uv[2], image, intensity, zbuffer);
-			}
-			if(drawSlow)
-				setTimeout(drawFace, 1, ++i);
 		}
 	}
 	</script>
